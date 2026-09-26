@@ -7,7 +7,7 @@ This repository contains the R script and phenotypic data used for genome-wide a
 
 Contents
 File	Description
-barley-project.R	R script for genotype processing, principal component analysis, and GWAS using the FarmCPU model in GAPIT
+Barley Project.txt	R script for genotype processing, principal component analysis, and GWAS using the FarmCPU model in GAPIT
 all_phenotypes.csv	Phenotypic data for all 26 lines across 36 traits (biomass, tissue Pi concentration, and root system architecture under low and high phosphorus conditions, and response values)
 Analysis overview
 The script performs the following steps:
