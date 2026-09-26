@@ -1,0 +1,194 @@
+####
+# Genome-Wide Association Study (GWAS) of Phosphate Starvation Response
+# in Eastern European Barley Lines
+#
+# Author: Rajkomal Kaur
+
+# 1. LIBRARIES
+
+library(vcfR)
+library(dplyr)
+library(tidyr)
+library(ggplot2)
+library(GAPIT)
+
+# 2. GENOTYPE DATA
+
+# Load VCF file (imputed with Beagle/Eagle, Morex v3 reference)
+vcf <- read.vcfR("C:/Users/rajko/Downloads/beagle_eagle-imputed-all-chroms.vcf/beagle_eagle-imputed-all-chroms.vcf")
+
+# Check VCF object
+vcf
+
+# 2.1 Subset to 26 varieties
+
+my_varieties <- c(
+  "Nitransky-Exportni", "MURSA", "NAXON", "MOSKOVSKII-121",
+  "OBZOR", "MONOLIT", "NUTANS-244", "Nutans-115", "Novum",
+  "Imperial", "ISIS-GK", "Novodvorsky-Hanacky",
+  "NOLC-DREGERUV-BOHEMIA", "PAVLOVICKY", "PAX",
+  "PALLIDUM", "PALLIDUM-043", "PATIMATIAE", "Orbit",
+  "Petro", "Perun", "PEVESZTEGI-8-H-SATIVUM", "PERVENEC",
+  "Rumaenische-Orzoika", "Mv-43", "ILJSINECKIJ-43"
+)
+
+vcf_subset <- vcf[, c("FORMAT", my_varieties)]
+
+# 2.2 Convert genotypes to numeric matrix (0, 1, 2)
+
+gt <- extract.gt(vcf_subset, element = "GT")
+
+gt_numeric <- matrix(NA, nrow = nrow(gt), ncol = ncol(gt))
+rownames(gt_numeric) <- rownames(gt)
+colnames(gt_numeric) <- colnames(gt)
+
+for (i in 1:nrow(gt)) {
+  for (j in 1:ncol(gt)) {
+    if (!is.na(gt[i, j])) {
+      if (gt[i, j] == "0|0" || gt[i, j] == "0/0") {
+        gt_numeric[i, j] <- 0
+      } else if (gt[i, j] == "0|1" || gt[i, j] == "1|0" ||
+                 gt[i, j] == "0/1" || gt[i, j] == "1/0") {
+        gt_numeric[i, j] <- 1
+      } else if (gt[i, j] == "1|1" || gt[i, j] == "1/1") {
+        gt_numeric[i, j] <- 2
+      }
+    }
+  }
+}
+
+# 2.3 SNP filtering (MAF > 1%)
+
+maf <- apply(gt_numeric, 1, function(x) {
+  freq <- mean(x, na.rm = TRUE) / 2
+  min(freq, 1 - freq)
+})
+
+keep <- maf > 0.01
+gt_filtered <- gt_numeric[keep, ]
+
+# Transpose (varieties as rows, SNPs as columns)
+gt_filtered_t <- t(gt_filtered)
+
+# 3. PHENOTYPE DATA
+
+# Load phenotype file
+all_pheno <- read.csv("C:/Users/rajko/OneDrive/Documents/Masters Research/data/all_phenotypes.csv")
+
+# Diff traits (YesP - NoP)
+diff_traits <- c(
+  "Bio_Root_Diff", "Bio_Shoot_Diff", "Bio_Total_Diff",
+  "Phos_Root_Diff", "Phos_Shoot_Diff",
+  "RSA_Length_Diff", "RSA_Tips_Diff", "RSA_Volume_Diff",
+  "RSA_Depth_Diff", "RSA_Diameter_Diff", "RSA_Surface_Diff", "RSA_Width_Diff"
+)
+
+# 3.1 Match genotype and phenotype order
+
+all_pheno <- all_pheno[match(rownames(gt_filtered_t), all_pheno$Line), ]
+all(rownames(gt_filtered_t) == all_pheno$Line)
+
+# 4. PRINCIPAL COMPONENT ANALYSIS (PCA)
+
+pca_result <- prcomp(gt_filtered_t, scale. = TRUE)
+
+var_explained <- summary(pca_result)$importance[2, 1:5] * 100
+var_explained
+
+# PCA plot
+pca_data <- data.frame(
+  PC1 = pca_result$x[, 1],
+  PC2 = pca_result$x[, 2],
+  Variety = rownames(pca_result$x)
+)
+
+ggplot(pca_data, aes(x = PC1, y = PC2, label = Variety)) +
+  geom_point(size = 3, color = "steelblue") +
+  geom_text(hjust = 0.5, vjust = -0.8, size = 3) +
+  labs(title = "PCA of 26 Barley Varieties",
+       x = paste0("PC1 (", round(var_explained[1], 1), "%)"),
+       y = paste0("PC2 (", round(var_explained[2], 1), "%)")) +
+  theme_minimal()
+
+# 5. GENOTYPE AND MAP FILES FOR GAPIT
+
+# Genotype file
+geno_gapit <- data.frame(
+  Taxa = rownames(gt_filtered_t),
+  gt_filtered_t,
+  row.names = NULL
+)
+
+# Map file
+myGM <- data.frame(
+  SNP = colnames(gt_filtered_t),
+  Chromosome = gsub("_.*", "", colnames(gt_filtered_t)),
+  Position = as.numeric(gsub("_.*$", "", gsub("^[^_]*_", "", colnames(gt_filtered_t))))
+)
+
+# Keep only valid chromosomes
+myGM <- myGM[myGM$Chromosome %in% c("chr1H","chr2H","chr3H","chr4H","chr5H","chr6H","chr7H"), ]
+myGM$Chromosome <- as.numeric(gsub("H", "", gsub("chr", "", myGM$Chromosome)))
+
+# Match GD and GM
+myGM <- myGM[myGM$SNP %in% colnames(geno_gapit), ]
+geno_gapit <- geno_gapit[, c("Taxa", myGM$SNP)]
+
+# Check
+nrow(myGM)
+ncol(geno_gapit) - 1
+all(colnames(geno_gapit)[-1] == myGM$SNP)
+
+# 6. GWAS (FarmCPU)
+
+for (trait in diff_traits) {
+  
+  cat("Running GWAS for:", trait, "\n")
+  
+  myY <- data.frame(
+    Taxa = all_pheno$Line,
+    Trait = all_pheno[[trait]]
+  )
+  colnames(myY)[2] <- trait
+  
+  GAPIT(
+    Y = myY,
+    GD = geno_gapit,
+    GM = myGM,
+    model = "FarmCPU",
+    PCA.total = 3
+  )
+}
+
+# 7. RESULTS SUMMARY
+
+# Function to extract top SNP per trait
+get_top_snp <- function(trait_name) {
+  
+  file_name <- paste0("GAPIT.Association.GWAS_Results.FarmCPU.", trait_name, "(NYC).csv")
+  
+  if (!file.exists(file_name)) {
+    return(data.frame(Trait = trait_name, Top_SNP = "File not found",
+                      Chr = NA, Pos = NA, P.value = NA, Effect = NA))
+  }
+  
+  gwas_results <- read.csv(file_name)
+  top_snp <- gwas_results[order(gwas_results$P.value), ][1, ]
+  
+  return(data.frame(
+    Trait = trait_name,
+    Top_SNP = top_snp$SNP,
+    Chr = top_snp$Chr,
+    Pos = top_snp$Pos,
+    P.value = top_snp$P.value,
+    Effect = top_snp$Effect
+  ))
+}
+
+top_snp_table <- do.call(rbind, lapply(diff_traits, get_top_snp))
+top_snp_table$P.value <- format(top_snp_table$P.value, scientific = TRUE, digits = 3)
+
+print(top_snp_table)
+write.csv(top_snp_table, "top_snps_all_traits.csv", row.names = FALSE)
+
+# END OF SCRIPT
