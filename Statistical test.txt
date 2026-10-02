@@ -1,0 +1,184 @@
+# Statistical Test
+# Author: Rajkomal Kaur
+
+# Two-Way ANOVA: 
+# 1. Assumptions → 2. Visual checks → 3. ANOVA → 4. Post-hoc
+
+# 1. LIBRARIES
+
+library(readxl)
+library(dplyr)
+library(car)
+
+# 2. LOAD DATA
+
+biomass <- read_excel("~/Masters Research/Biomass(Hydroponics).xlsx")
+biomass$Total_Biomass <- biomass$`Root Wt.(mg)` + biomass$`Shoot wt.(mg)`
+
+rsa <- read_excel("~/Masters Research/Hydroponics/HydroponicsRSA.xlsx")
+
+phosphate_raw <- read_excel("~/Masters Research/Pi quantification(Hydroponics).xlsx")
+
+phosphate <- phosphate_raw %>%
+  filter(grepl("Root|Shoot", `Pi quantification`))
+
+colnames(phosphate) <- c("Line", "Treatment", "Replicate", "Reading", "m", "c", "Conc_nmol", "umol_per_gFW")
+
+phosphate <- phosphate %>%
+  mutate(
+    Tissue = ifelse(grepl("Root", Line), "Root", "Shoot"),
+    Line = gsub("\\(Root\\)|\\(Shoot\\)", "", Line),
+    umol_per_gFW = as.numeric(umol_per_gFW)
+  ) %>%
+  filter(!is.na(umol_per_gFW))
+
+# 3. CHECK ASSUMPTIONS FIRST
+
+# --- 3.1 Normality ---
+cat("\n===== Shapiro-Wilk (Normality) =====\n")
+shapiro.test(residuals(aov(Total_Biomass ~ Line * Treatment, data = biomass)))
+shapiro.test(residuals(aov(umol_per_gFW ~ Line * Treatment, data = subset(phosphate, Tissue == "Root"))))
+shapiro.test(residuals(aov(umol_per_gFW ~ Line * Treatment, data = subset(phosphate, Tissue == "Shoot"))))
+shapiro.test(residuals(aov(Total.Root.Length.mm ~ Line * Treatment, data = rsa)))
+shapiro.test(residuals(aov(Number.of.Root.Tips ~ Line * Treatment, data = rsa)))
+shapiro.test(residuals(aov(Volume.mm3 ~ Line * Treatment, data = rsa)))
+shapiro.test(residuals(aov(Depth.mm ~ Line * Treatment, data = rsa)))
+shapiro.test(residuals(aov(Average.Diameter.mm ~ Line * Treatment, data = rsa)))
+
+# --- 3.2 Homogeneity ---
+cat("\n===== Levene's Test (Homogeneity) =====\n")
+leveneTest(Total_Biomass ~ Line * Treatment, data = biomass)
+leveneTest(umol_per_gFW ~ Line * Treatment, data = subset(phosphate, Tissue == "Root"))
+leveneTest(umol_per_gFW ~ Line * Treatment, data = subset(phosphate, Tissue == "Shoot"))
+leveneTest(Total.Root.Length.mm ~ Line * Treatment, data = rsa)
+leveneTest(Number.of.Root.Tips ~ Line * Treatment, data = rsa)
+leveneTest(Volume.mm3 ~ Line * Treatment, data = rsa)
+leveneTest(Depth.mm ~ Line * Treatment, data = rsa)
+leveneTest(Average.Diameter.mm ~ Line * Treatment, data = rsa)
+
+# 4. VISUAL CHECKS
+
+# --- 4.1 QQ plots ---
+par(mfrow = c(2, 4))
+qqnorm(residuals(aov(Total_Biomass ~ Line * Treatment, data = biomass)), main = "Biomass")
+qqline(residuals(aov(Total_Biomass ~ Line * Treatment, data = biomass)), col = "red")
+
+qqnorm(residuals(aov(umol_per_gFW ~ Line * Treatment, data = subset(phosphate, Tissue == "Root"))), main = "Phos Root")
+qqline(residuals(aov(umol_per_gFW ~ Line * Treatment, data = subset(phosphate, Tissue == "Root"))), col = "red")
+
+qqnorm(residuals(aov(umol_per_gFW ~ Line * Treatment, data = subset(phosphate, Tissue == "Shoot"))), main = "Phos Shoot")
+qqline(residuals(aov(umol_per_gFW ~ Line * Treatment, data = subset(phosphate, Tissue == "Shoot"))), col = "red")
+
+qqnorm(residuals(aov(Total.Root.Length.mm ~ Line * Treatment, data = rsa)), main = "Length")
+qqline(residuals(aov(Total.Root.Length.mm ~ Line * Treatment, data = rsa)), col = "red")
+
+qqnorm(residuals(aov(Number.of.Root.Tips ~ Line * Treatment, data = rsa)), main = "Tips")
+qqline(residuals(aov(Number.of.Root.Tips ~ Line * Treatment, data = rsa)), col = "red")
+
+qqnorm(residuals(aov(Volume.mm3 ~ Line * Treatment, data = rsa)), main = "Volume")
+qqline(residuals(aov(Volume.mm3 ~ Line * Treatment, data = rsa)), col = "red")
+
+qqnorm(residuals(aov(Depth.mm ~ Line * Treatment, data = rsa)), main = "Depth")
+qqline(residuals(aov(Depth.mm ~ Line * Treatment, data = rsa)), col = "red")
+
+qqnorm(residuals(aov(Average.Diameter.mm ~ Line * Treatment, data = rsa)), main = "Diameter")
+qqline(residuals(aov(Average.Diameter.mm ~ Line * Treatment, data = rsa)), col = "red")
+
+# --- 4.2 Residuals vs Fitted ---
+par(mfrow = c(2, 4))
+plot(fitted(aov(Total_Biomass ~ Line * Treatment, data = biomass)),
+     residuals(aov(Total_Biomass ~ Line * Treatment, data = biomass)),
+     main = "Biomass", xlab = "Fitted", ylab = "Residuals")
+abline(h = 0, col = "red")
+
+plot(fitted(aov(Total.Root.Length.mm ~ Line * Treatment, data = rsa)),
+     residuals(aov(Total.Root.Length.mm ~ Line * Treatment, data = rsa)),
+     main = "Length", xlab = "Fitted", ylab = "Residuals")
+abline(h = 0, col = "red")
+
+# --- 4.3 Boxplots by Treatment ---
+par(mfrow = c(2, 4))
+boxplot(Total_Biomass ~ Treatment, data = biomass, main = "Biomass")
+boxplot(umol_per_gFW ~ Treatment, data = subset(phosphate, Tissue == "Root"), main = "Phos Root")
+boxplot(umol_per_gFW ~ Treatment, data = subset(phosphate, Tissue == "Shoot"), main = "Phos Shoot")
+boxplot(Total.Root.Length.mm ~ Treatment, data = rsa, main = "Length")
+boxplot(Number.of.Root.Tips ~ Treatment, data = rsa, main = "Tips")
+boxplot(Volume.mm3 ~ Treatment, data = rsa, main = "Volume")
+boxplot(Depth.mm ~ Treatment, data = rsa, main = "Depth")
+boxplot(Average.Diameter.mm ~ Treatment, data = rsa, main = "Diameter")
+
+# 5. RUN ANOVA (assumptions assessed)
+
+aov_biomass <- aov(Total_Biomass ~ Line * Treatment, data = biomass)
+aov_phos_root <- aov(umol_per_gFW ~ Line * Treatment, data = subset(phosphate, Tissue == "Root"))
+aov_phos_shoot <- aov(umol_per_gFW ~ Line * Treatment, data = subset(phosphate, Tissue == "Shoot"))
+aov_length <- aov(Total.Root.Length.mm ~ Line * Treatment, data = rsa)
+aov_tips <- aov(Number.of.Root.Tips ~ Line * Treatment, data = rsa)
+aov_volume <- aov(Volume.mm3 ~ Line * Treatment, data = rsa)
+aov_depth <- aov(Depth.mm ~ Line * Treatment, data = rsa)
+aov_diameter <- aov(Average.Diameter.mm ~ Line * Treatment, data = rsa)
+
+cat("\n===== ANOVA Results =====\n")
+cat("\n--- Total Biomass ---\n"); summary(aov_biomass)
+cat("\n--- Root Phosphate ---\n"); summary(aov_phos_root)
+cat("\n--- Shoot Phosphate ---\n"); summary(aov_phos_shoot)
+cat("\n--- Root Length ---\n"); summary(aov_length)
+cat("\n--- Root Tips ---\n"); summary(aov_tips)
+cat("\n--- Root Volume ---\n"); summary(aov_volume)
+cat("\n--- Root Depth ---\n"); summary(aov_depth)
+cat("\n--- Root Diameter ---\n"); summary(aov_diameter)
+
+# 6. WELCH'S ANOVA (for unequal variances)
+
+cat("\n===== Welch's ANOVA (Root Length) =====\n")
+oneway.test(Total.Root.Length.mm ~ interaction(Line, Treatment), data = rsa)
+
+cat("\n===== Welch's ANOVA (Root Tips) =====\n")
+oneway.test(Number.of.Root.Tips ~ interaction(Line, Treatment), data = rsa)
+
+# 7. POST-HOC TESTS (Tukey HSD)
+
+cat("\n===== Tukey HSD: Total Biomass =====\n"); TukeyHSD(aov_biomass)
+cat("\n===== Tukey HSD: Root Phosphate =====\n"); TukeyHSD(aov_phos_root)
+cat("\n===== Tukey HSD: Shoot Phosphate =====\n"); TukeyHSD(aov_phos_shoot)
+
+# 8. SUMMARY TABLE
+
+extract_pvalues <- function(aov_model, trait_name) {
+  s <- summary(aov_model)[[1]]
+  data.frame(
+    Trait = trait_name,
+    Genotype_p = s[["Pr(>F)"]][1],
+    Treatment_p = s[["Pr(>F)"]][2],
+    Interaction_p = s[["Pr(>F)"]][3]
+  )
+}
+
+add_stars <- function(p) {
+  ifelse(p < 0.001, "***",
+  ifelse(p < 0.01, "**",
+  ifelse(p < 0.05, "*", "ns")))
+}
+
+anova_summary <- rbind(
+  extract_pvalues(aov_biomass, "Total_Biomass"),
+  extract_pvalues(aov_phos_root, "Phos_Root"),
+  extract_pvalues(aov_phos_shoot, "Phos_Shoot"),
+  extract_pvalues(aov_length, "RSA_Length"),
+  extract_pvalues(aov_tips, "RSA_Tips"),
+  extract_pvalues(aov_volume, "RSA_Volume"),
+  extract_pvalues(aov_depth, "RSA_Depth"),
+  extract_pvalues(aov_diameter, "RSA_Diameter")
+)
+
+anova_summary <- anova_summary %>%
+  mutate(
+    Genotype_sig = add_stars(Genotype_p),
+    Treatment_sig = add_stars(Treatment_p),
+    Interaction_sig = add_stars(Interaction_p)
+  )
+
+print(anova_summary)
+write.csv(anova_summary, "anova_genotype_treatment_summary.csv", row.names = FALSE)
+
+# END OF SCRIPT
